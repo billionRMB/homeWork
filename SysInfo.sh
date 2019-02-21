@@ -38,8 +38,8 @@ function echoLevel(){
 
 curTime=`date +"%Y-%m-%d__%H:%M:%SS"`
 hostName=`hostname`
-osVersion=`cat /etc/issue`
-kernelVersion=`uname -a | cut -f 3 -d" "`
+osVersion=`cat /etc/issue.net`
+kernelVersion=`uname -r`
 runTimeS=`cat /proc/uptime | cut -f 1 -d "."`
 avgLoad=`uptime|cut -f 3- -d "," |cut -f 2 -d ":"`
 cpuTemp=$[`cat /sys/class/thermal/thermal_zone0/temp`]

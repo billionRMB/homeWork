@@ -34,7 +34,6 @@ function echoTemp(){
 }
 
 eval $(head -n 1 /proc/stat | awk -v sum1=0 -v idel1=0 '{for(i=2;i<=8;i++){sum1=sum1+$i}}END{printf("sum1=%d idel1=%d",sum1,$5)}')
-#　为啥呢？
 
 sleep 0.5
 
