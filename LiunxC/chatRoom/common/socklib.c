@@ -12,13 +12,14 @@ int strToInt(char*str){
     }
     return ans;
 }
-
 int connect_to_server(char* IP,int port){
+
     int sockfd;
     if((sockfd=socket(AF_INET,SOCK_STREAM,0))==-1){
         perror("make socket:");
-        exit(1);
+        return -1;
     }
+
     struct sockaddr_in their_add;
     their_add.sin_family = AF_INET;
     their_add.sin_port = htons(port);
@@ -28,10 +29,9 @@ int connect_to_server(char* IP,int port){
     if(connect(sockfd,(struct sockaddr*)&their_add,sizeof(struct sockaddr)) == -1){
        perror("connect server failed:");  
        close(sockfd);
-       exit(1);
+       return -1;
     }
     return sockfd;
-
 }
 
 int make_server_socket(int port,int q_size){
@@ -95,11 +95,52 @@ int get_conf_value(char *pathname, char *key_name,char* value){
             strcpy(value,get_a(buff+i+len+1,'\n'));
             break;
         }else{
-            i=i+strlen(temp)+strlen(get_a(buff+len+1,'\n'));
+            i=i+strlen(temp)+2+strlen(get_a(buff+i+len+1,'\n'));
         }
     }
 
     close(fd);
 
     return 0;
+}
+
+void initSCFL(SCFL**sl){
+    *sl = calloc(1,sizeof(SCFL));
+    (*sl) -> cInfo = calloc(1,sizeof(clientInfo));
+}
+
+void setTips(SCFL*sl,char*tips){
+    sl->tips = calloc(strlen(tips),sizeof(char));
+    strcpy(sl->tips,tips);
+}
+
+int runServer(SCFL* serverCF,int mport){
+    char filePath[]="/home/gintama/homeWork/LiunxC/chatRoom/common/chatroom.conf";
+    // 从文件中读取配置
+    char tempport[8];
+    get_conf_value(filePath,"serverport",tempport);
+    int port = strToInt(tempport);
+    // 获得连接
+    if(mport!=-1){
+        port = mport;
+    }
+    int socket_fd = make_server_socket(port,10);
+    int connect_fd;
+    // 输出server 的提示
+    printf("%s",serverCF->tips);
+    // 客户端的一部分信息
+    while(1){
+        if( (connect_fd = accept(socket_fd, (struct sockaddr*)&serverCF->cInfo->saddr_client,(socklen_t*)&serverCF->cInfo->clength)) == -1){
+        printf("accept socket error: %s(errno: %d)",strerror(errno),errno);
+        exit(0);
+        }
+        int pid = fork();
+        if(pid < 0){
+            printf("Wrong fork\n");
+        }else if(pid == 0){
+            // 子进程
+            serverCF->process_request(connect_fd,serverCF->cInfo);
+        }
+    }
+    close(socket_fd);
 }

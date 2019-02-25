@@ -9,16 +9,21 @@
 #define BUFSIZE 100
 
 char IP[]="192.168.2.86";
-int port=8731;
+
+int port=8732;
 
 char name[]="银.TAMA";
 
 int main(int arg,char*args[]){
-    if(arg == 3){
+    printf("%d\n",arg);
+
+    if(arg == 4){
         strcpy(IP,args[1]);
         port=strToInt(args[2]);
         strcpy(name,args[3]);
     }
+    printf("%d\n",port);
+
     int sockfd = connect_to_server(IP,port);
 
     send(sockfd,name,sizeof(name),0);
