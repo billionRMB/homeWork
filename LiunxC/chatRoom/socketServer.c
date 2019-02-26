@@ -33,7 +33,6 @@ int main(int args,char* argc[]){
     if(args == 2){
         port = strToInt(argc[1]);
     }
-    printf("%d\n",port);
     SCFL* serverCF = NULL;
     char Tips[] = "Server Start  ..\n";
     initSCFL(&serverCF);

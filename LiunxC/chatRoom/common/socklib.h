@@ -26,11 +26,20 @@
 #include <time.h>
 #include <stdarg.h>
 
+#define DEBUG
+
 #if defined DEBUG
 #define DBG(s){printf("DBG:%s = %d\n",#s,s);}
+#define DBS(s){printf("DBG:%s = %s\n",#s,s);}
 #else
 #define DBG(s){}
+#define DBS(S){}
 #endif
+struct Message{
+ char from[20];
+ int flag;//若flag为1则为私聊信息，0为公聊信息，2则为服务器的通知信息
+ char message[1024];
+};
 typedef struct clientInfo{
     struct sockaddr_in saddr_client;
     int clength;
@@ -52,8 +61,10 @@ int connect_to_server(char*,int);
 // string to int 
 int strToInt(char*);
 //　从pathname文件下读key - value
-int get_conf_value(char *pathname, char *key_name,char* value);
+int get_conf_value(char *pathname, char *key_name,char** value);
 // 抽象的一个server的controller
 int runServer(SCFL* serverCF,int);
+// 封装一下send 函数来发送一个Struct message
+int sendMessage(int sockfd,Message*msg);
 #endif
 

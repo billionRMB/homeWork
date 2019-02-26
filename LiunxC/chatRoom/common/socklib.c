@@ -31,6 +31,7 @@ int connect_to_server(char* IP,int port){
        close(sockfd);
        return -1;
     }
+
     return sockfd;
 }
 
@@ -70,7 +71,7 @@ char* get_a(char* buff,char endChar){
     return result;
 }
 
-int get_conf_value(char *pathname, char *key_name,char* value){
+int get_conf_value(char *pathname, char *key_name,char** value){
     int fd;
     if((fd = open(pathname,O_RDONLY)) == -1){
         printf("Wrong open %s\n",pathname);
@@ -91,15 +92,21 @@ int get_conf_value(char *pathname, char *key_name,char* value){
 
     while(i < length){
         char* temp = get_a(buff+i,'=');
+        int tempLen = strlen(temp);
         if(strncmp(key_name,temp,len) == 0){
-            strcpy(value,get_a(buff+i+len+1,'\n'));
+            *value=get_a(buff+i+len+1,'\n');
             break;
         }else{
-            i=i+strlen(temp)+2+strlen(get_a(buff+i+len+1,'\n'));
+            i=i+tempLen+2+strlen(get_a(buff+i+tempLen+1,'\n'));
         }
     }
 
     close(fd);
+
+    if(i>=length){
+        printf("%s is not right key\n",key_name);
+        exit(-1);
+    }
 
     return 0;
 }
@@ -115,16 +122,16 @@ void setTips(SCFL*sl,char*tips){
 }
 
 int runServer(SCFL* serverCF,int mport){
-    char filePath[]="/home/gintama/homeWork/LiunxC/chatRoom/common/chatroom.conf";
+    char filePath[]="./common/server.conf";
     // 从文件中读取配置
-    char tempport[8];
-    get_conf_value(filePath,"serverport",tempport);
-    int port = strToInt(tempport);
+    char* tempport = NULL;
+    get_conf_value(filePath,"server_port",&tempport);
     // 获得连接
-    if(mport!=-1){
-        port = mport;
+    if(mport==-1){
+        mport = strToInt(tempport);
     }
-    int socket_fd = make_server_socket(port,10);
+    DBG(mport);
+    int socket_fd = make_server_socket(mport,10);
     int connect_fd;
     // 输出server 的提示
     printf("%s",serverCF->tips);
