@@ -35,11 +35,11 @@
 #define DBG(s){}
 #define DBS(S){}
 #endif
-struct Message{
+typedef struct Message{
  char from[20];
  int flag;//若flag为1则为私聊信息，0为公聊信息，2则为服务器的通知信息
  char message[1024];
-};
+}message;
 typedef struct clientInfo{
     struct sockaddr_in saddr_client;
     int clength;
@@ -53,7 +53,6 @@ typedef struct serverCFuntion{
 void initSCFL(SCFL** serverCF);
 // 设置server 启动时的话语
 void setTips(SCFL* sf,char*tips);
-
 // 获得一个server的socket
 int make_server_socket(int,int);
 // 连接到服务器
@@ -65,6 +64,8 @@ int get_conf_value(char *pathname, char *key_name,char** value);
 // 抽象的一个server的controller
 int runServer(SCFL* serverCF,int);
 // 封装一下send 函数来发送一个Struct message
-int sendMessage(int sockfd,Message*msg);
+int sendMessage(int sockfd,message*msg);
+// 封装一下recv函数来接收一个Struct Message
+int recvMessage(int connetfd,message* msg);
 #endif
 

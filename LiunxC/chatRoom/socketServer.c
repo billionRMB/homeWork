@@ -16,6 +16,13 @@ int process_request(int connect_fd,clientInfo* s){
             name[nameL] = '\0';
             printf("%s Login in from %s\n",name,inet_ntoa(s->saddr_client.sin_addr));
             int n;
+            /*
+            // 这个是用来接收mesage struct 的。。
+            message msg;
+            while(recvMessage(connect_fd,&msg)!=-1){
+                printf("msg:recv:%s\n",msg.message);
+            }
+            */
             char buff[100];
             while((n = recv(connect_fd,buff,100,0))> 0){
                 buff[n] = '\0';

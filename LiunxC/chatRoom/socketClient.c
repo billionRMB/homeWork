@@ -6,7 +6,6 @@
  ************************************************************************/
 
 #include "common/socklib.h"
-#define BUFSIZE 100
 
 char filePath[] = "./common/chatroom.conf";
 
@@ -22,11 +21,16 @@ int process_request(int connect_fd,clientInfo* s){
     switch(pid){
         case -1:return -1;
         case 0:{
-            int n;
-            char buff[100];
-            while((n = recv(connect_fd,buff,100,0))> 0){
-                buff[n] = '\0';
-                printf("%s\n", buff);
+            FILE* fd;
+            fd = fopen(log_file,"a");
+            if(fd == NULL){
+                printf("Wrong open %s\n",log_file);
+                exit(-1);
+            }
+            message msg;
+            while(recvMessage(connect_fd,&msg)!=-1){
+                printf("msg.recv:%s\n",msg.message);
+                fprintf(fd,"from:%s:flag:%d:message:%s\n",msg.from,msg.flag,msg.message);
             }
             close(connect_fd);
             exit(0);
@@ -52,7 +56,7 @@ int main(){
     // 发送姓名
     send(sockfd,name,sizeof(name),0);
 
-    char buf[BUFSIZE];
+    char buf[100];
 
     int pid = fork();
     
@@ -76,6 +80,12 @@ int main(){
             buf[0]='\0';
             scanf("%[^\n]",buf);getchar();
             send(sockfd,buf,strlen(buf),0);
+            /*
+            // 这个是用来发送struct message
+            message msg;
+            sendMessage(sockfd,&msg);
+            strcpy(msg.message,buf);
+            */
         }
         wait(NULL);
     }

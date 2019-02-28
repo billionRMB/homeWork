@@ -149,5 +149,45 @@ int runServer(SCFL* serverCF,int mport){
             serverCF->process_request(connect_fd,serverCF->cInfo);
         }
     }
+    wait(NULL);
     close(socket_fd);
+}
+
+#define BUFFER_SIZE 1024
+
+int sendMessage(int sockfd,message* msg){
+    // 将msg拷贝到char数组中然后发送
+    int needSend=sizeof(message);
+    char *buffer=(char*)malloc(needSend);
+    memcpy(buffer,msg,needSend);
+    int pos=0;
+    int len=0;
+    while(pos < needSend)
+    {
+        len=send(sockfd, buffer+pos, BUFFER_SIZE,0);
+        if(len <= 0)
+        {
+            perror("ERRPR");
+            break;
+        }
+        pos+=len;
+    }
+    free(buffer);
+    return needSend;
+}
+int recvMessage(int connetfd,message* msg){
+    int needRecv = sizeof(message);
+    char *buffer=(char*)malloc(needRecv);
+    int pos = 0,len = 0;
+    while(pos < needRecv){
+        len = recv(connetfd,buffer+pos,BUFFER_SIZE,0);
+        if(len < 0){
+            perror("server recv data wrong");
+            return -1;
+        }
+        pos+=len;
+    }
+    memcpy(msg,buffer,needRecv);
+    free(buffer);
+    return needRecv;
 }
