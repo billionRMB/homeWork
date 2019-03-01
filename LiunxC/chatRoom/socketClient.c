@@ -16,7 +16,7 @@ char* cport = NULL;
 char* log_file = NULL;
 
 
-int process_request(int connect_fd,clientInfo* s){
+int process_request(int connect_fd){
     int pid = fork();
     switch(pid){
         case -1:return -1;
@@ -52,6 +52,7 @@ int main(){
     // 初始化 配置变量
     init();
     // 获得套接字
+    DBS(port);
     int sockfd = connect_to_server(IP,strToInt(port));
     // 发送姓名
     send(sockfd,name,sizeof(name),0);
@@ -66,14 +67,7 @@ int main(){
     }
     // 子进程
     if(pid == 0){
-        SCFL* serverCF = NULL;
-        char Tips[] = "Client Server Start Listen ..\n";
-        initSCFL(&serverCF);
-        setTips(serverCF,Tips);
-        // 绑定server端执行的函数
-        serverCF->process_request = process_request;
-        // 运行server
-        runServer(serverCF,strToInt(cport));
+        process_request(sockfd);
     }else{
     // 父进程
         while(1){

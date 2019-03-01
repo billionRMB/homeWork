@@ -113,7 +113,35 @@ int get_conf_value(char *pathname, char *key_name,char** value){
 
 void initSCFL(SCFL**sl){
     *sl = calloc(1,sizeof(SCFL));
+    (*sl) -> num = 0;
     (*sl) -> cInfo = calloc(1,sizeof(clientInfo));
+    (*sl) -> cInfo -> next = NULL;
+    (*sl) -> tail = (*sl) -> cInfo;
+}
+
+void addCinfo(SCFL*s,clientInfo*node){
+    s->num++;
+    s->tail->next = node;
+    s->tail = node;
+}
+
+clientInfo* findCinfo(SCFL*s,char* name){
+    clientInfo* p = s -> cInfo;
+    while(p -> next!= NULL && strcmp(p->next-> name,name)){
+        printf("find:%s:%s\n",p -> next -> name,name);
+        p = p -> next;
+    }
+    return p;
+}
+
+void deleteCinfo(SCFL*s,char* name){
+    s -> num --;
+    clientInfo*p = findCinfo(s,name);
+    if(p->next == NULL)return;
+    clientInfo*q = p -> next;
+    p -> next = p -> next -> next;
+    free(q);
+    print(s);
 }
 
 void setTips(SCFL*sl,char*tips){
@@ -130,6 +158,7 @@ int runServer(SCFL* serverCF,int mport){
     if(mport==-1){
         mport = strToInt(tempport);
     }
+    printf("Server run on ");
     DBG(mport);
     int socket_fd = make_server_socket(mport,10);
     int connect_fd;
@@ -137,19 +166,19 @@ int runServer(SCFL* serverCF,int mport){
     printf("%s",serverCF->tips);
     // 客户端的一部分信息
     while(1){
-        if( (connect_fd = accept(socket_fd, (struct sockaddr*)&serverCF->cInfo->saddr_client,(socklen_t*)&serverCF->cInfo->clength)) == -1){
+        pthread_t pt;
+        argment arg;
+        clientInfo* cInfo = malloc(sizeof(clientInfo));
+        if( (connect_fd = accept(socket_fd, (struct sockaddr*)&cInfo->saddr_client,(socklen_t*)&cInfo->clength)) == -1){
         printf("accept socket error: %s(errno: %d)",strerror(errno),errno);
         exit(0);
         }
-        int pid = fork();
-        if(pid < 0){
-            printf("Wrong fork\n");
-        }else if(pid == 0){
-            // 子进程
-            serverCF->process_request(connect_fd,serverCF->cInfo);
-        }
+        cInfo -> socketFd = connect_fd;
+        if(serverCF->doClient(serverCF,cInfo)==1)continue;
+        arg.scf = serverCF;
+        arg.cInfo = cInfo;
+        pthread_create(&pt,NULL,serverCF->process_request,(void*)&arg); 
     }
-    wait(NULL);
     close(socket_fd);
 }
 
@@ -190,4 +219,13 @@ int recvMessage(int connetfd,message* msg){
     memcpy(msg,buffer,needRecv);
     free(buffer);
     return needRecv;
+}
+
+void print(SCFL* scf){
+    int i = 0;
+    clientInfo*p = scf -> cInfo;
+    while(p -> next){
+        printf("%d:name : [%s]\n",i++,p -> next -> name);
+        p = p -> next;
+    }
 }

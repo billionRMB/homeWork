@@ -9,16 +9,16 @@ CommonOBJS=socklib.o
 
 # 创建server
 server: $(CommonOBJS)
-	$(CC) $(CFLAGS) -c socketServer.c
-	$(CC) $(CFLAGS) -o server $(CommonOBJS) socketServer.o
+	$(CC) $(CFLAGS) -c socketServer.c -lpthread
+	$(CC) $(CFLAGS) -o server $(CommonOBJS) socketServer.o -lpthread
 
 # 创建client
 client: $(CommonOBJS)
-	$(CC) $(CFLAGS) -c socketClient.c
-	$(CC) $(CFLAGS) -o client $(CommonOBJS) socketClient.o
+	$(CC) $(CFLAGS) -c socketClient.c -lpthread
+	$(CC) $(CFLAGS) -o client $(CommonOBJS) socketClient.o -lpthread
 
 $(CommonOBJS): common/socklib.c
-	$(CC) $(CFLAGS) -c common/socklib.c
+	$(CC) $(CFLAGS) -c common/socklib.c -lpthread
 
 clean:
 	rm *.o

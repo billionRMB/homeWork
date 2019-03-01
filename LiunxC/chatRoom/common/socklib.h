@@ -6,8 +6,9 @@
  ************************************************************************/
 #ifndef _SOCKLIB_H
 #define _SOCKLIB_H
-#include<stdio.h>
+#include <stdio.h>
 #include <arpa/inet.h>
+#include <pthread.h>
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
@@ -35,20 +36,42 @@
 #define DBG(s){}
 #define DBS(S){}
 #endif
+
 typedef struct Message{
  char from[20];
  int flag;//若flag为1则为私聊信息，0为公聊信息，2则为服务器的通知信息
  char message[1024];
 }message;
+
 typedef struct clientInfo{
     struct sockaddr_in saddr_client;
     int clength;
+    int socketFd;
+    char name[20];
+    struct clientInfo* next;
 }clientInfo;
+
 typedef struct serverCFuntion{
     char * tips;
+    int num;
     clientInfo* cInfo;
-    int(*process_request)(int,clientInfo*);
+    clientInfo* tail;
+    void*(*process_request)(void*);
+    int(*doClient)(struct serverCFuntion*,clientInfo*);
 }SCFL;
+
+typedef struct argment{
+    SCFL* scf;
+    clientInfo* cInfo;
+}argment;
+// 输出all
+void print(SCFL*s);
+// 根据姓名查找一个用户节点
+clientInfo* findCinfo(SCFL*s,char* name);
+// 插入一个节点
+void addCinfo(SCFL*s,clientInfo* node);
+// 删除一个节点
+void deleteCinfo(SCFL*s,char* name);
 // 初始化一下
 void initSCFL(SCFL** serverCF);
 // 设置server 启动时的话语
