@@ -52,6 +52,8 @@ typedef struct clientInfo{
 }clientInfo;
 
 typedef struct serverCFuntion{
+    pthread_mutex_t Rmutex;
+    pthread_mutex_t Wmutex;
     char * tips;
     int num;
     clientInfo* cInfo;

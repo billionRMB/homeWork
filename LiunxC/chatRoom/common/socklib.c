@@ -120,27 +120,33 @@ void initSCFL(SCFL**sl){
 }
 
 void addCinfo(SCFL*s,clientInfo*node){
+    pthread_mutex_lock(&s->Rmutex);
+    pthread_mutex_lock(&s->Wmutex);
     s->num++;
     s->tail->next = node;
     s->tail = node;
+    pthread_mutex_unlock(&s->Wmutex);
+    pthread_mutex_unlock(&s->Rmutex);
 }
 
 clientInfo* findCinfo(SCFL*s,char* name){
+    pthread_mutex_lock(&s->Rmutex);
     clientInfo* p = s -> cInfo;
     while(p -> next!= NULL && strcmp(p->next-> name,name)){
         printf("find:%s:%s\n",p -> next -> name,name);
         p = p -> next;
     }
+    pthread_mutex_unlock(&s->Rmutex);
     return p;
 }
 
 void deleteCinfo(SCFL*s,char* name){
-    s -> num --;
     clientInfo*p = findCinfo(s,name);
     if(p->next == NULL)return;
     clientInfo*q = p -> next;
     p -> next = p -> next -> next;
     free(q);
+    s -> num --;
     print(s);
 }
 
