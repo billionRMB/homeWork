@@ -52,8 +52,7 @@ typedef struct clientInfo{
 }clientInfo;
 
 typedef struct serverCFuntion{
-    pthread_mutex_t Rmutex;
-    pthread_mutex_t Wmutex;
+    pthread_rwlock_t rwlock;
     char * tips;
     int num;
     clientInfo* cInfo;
@@ -92,5 +91,9 @@ int runServer(SCFL* serverCF,int);
 int sendMessage(int sockfd,message*msg);
 // 封装一下recv函数来接收一个Struct Message
 int recvMessage(int connetfd,message* msg);
+void send_to_fd(int ,message*);
+void send_to_name(SCFL*,char*,message*);
+void send_all(SCFL*,message*);
+char* getAll(SCFL*,int,char);
 #endif
 

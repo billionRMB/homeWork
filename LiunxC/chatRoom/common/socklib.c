@@ -5,6 +5,7 @@
 	> Created Time: 2019年02月23日 星期六 11时02分06秒
  ************************************************************************/
 #include "socklib.h"
+
 int strToInt(char*str){
     int ans = 0;
     for(int i = 0;str[i];i++){
@@ -117,36 +118,38 @@ void initSCFL(SCFL**sl){
     (*sl) -> cInfo = calloc(1,sizeof(clientInfo));
     (*sl) -> cInfo -> next = NULL;
     (*sl) -> tail = (*sl) -> cInfo;
+    pthread_rwlock_init(&((*sl)->rwlock),NULL);
 }
 
 void addCinfo(SCFL*s,clientInfo*node){
-    pthread_mutex_lock(&s->Rmutex);
-    pthread_mutex_lock(&s->Wmutex);
+    pthread_rwlock_wrlock(&s->rwlock);
     s->num++;
     s->tail->next = node;
     s->tail = node;
-    pthread_mutex_unlock(&s->Wmutex);
-    pthread_mutex_unlock(&s->Rmutex);
+    node->next = NULL;
+    pthread_rwlock_unlock(&s->rwlock);
 }
 
 clientInfo* findCinfo(SCFL*s,char* name){
-    pthread_mutex_lock(&s->Rmutex);
+    pthread_rwlock_rdlock(&s->rwlock);
     clientInfo* p = s -> cInfo;
     while(p -> next!= NULL && strcmp(p->next-> name,name)){
         printf("find:%s:%s\n",p -> next -> name,name);
         p = p -> next;
     }
-    pthread_mutex_unlock(&s->Rmutex);
+    pthread_rwlock_unlock(&s->rwlock);
     return p;
 }
 
 void deleteCinfo(SCFL*s,char* name){
     clientInfo*p = findCinfo(s,name);
+    pthread_rwlock_wrlock(&s->rwlock);
     if(p->next == NULL)return;
     clientInfo*q = p -> next;
     p -> next = p -> next -> next;
     free(q);
     s -> num --;
+    pthread_rwlock_unlock(&s->rwlock);
     print(s);
 }
 
@@ -235,3 +238,38 @@ void print(SCFL* scf){
         p = p -> next;
     }
 }
+
+void send_to_fd(int fd,message*msg){
+    sendMessage(fd,msg);
+}
+
+void send_to_name(SCFL*s,char*name,message*msg){
+    int sendfd = findCinfo(s,name)->next->socketFd;
+    send_to_fd(sendfd,msg);
+}
+
+void send_all(SCFL*s,message*msg){
+    clientInfo*p = s -> cInfo;
+    pthread_rwlock_wrlock(&s->rwlock);
+    while(p -> next){
+        send_to_fd(p ->next->socketFd,msg);
+        p = p -> next;
+    }
+    pthread_rwlock_unlock(&s->rwlock);
+}
+char* getAll(SCFL*s,int num,char endc){
+    char* result = calloc(22*num,sizeof(char));
+    clientInfo*p = s->cInfo;
+    int end = 0;
+    pthread_rwlock_rdlock(&s->rwlock);
+    while(p->next){
+        int i = strlen(p -> next -> name);
+        strncpy(result+end,p -> next -> name,i);
+        result[end+i++] = endc;
+        end += i;
+        p = p -> next;
+    }
+    pthread_rwlock_unlock(&s->rwlock);
+    return result;
+}
+
