@@ -7,8 +7,17 @@
 
 #include"common/common.h"
 
+char sIp[] = "192.168.2.86";
+int port = 8731;
+void initConfig(){
+    port = 8731;
+}
+
 int main(){
-    write_Pi_log("test.log","%s\n","hi");
+    initConfig;
+    write_Pi_log("test.log","port:%d,sIp %s\n",port,sIp);
+    int cfd = connect_to_ip(sIp,port);
+
     return 0;
 }
 
