@@ -61,6 +61,7 @@ void* heartBeat(void* arg){
     int n = 0;
     while(1){
         sleep(3);
+        DBG("----------------------------------------\n");
         for(int i = 0;i < s->INS;i++){
             DBG("NO.%d心跳-队列[%d] 线上用户[%d]人\n", n,i,s->heads[i]. len);
             tempHead = s -> heads+i;
@@ -83,7 +84,6 @@ void* heartBeat(void* arg){
                 }else{
                     DBG("节点%s 还存在\n",ip);
                 }
-                printf("Test %d\n",i);
                 p = p -> next;
             }
             pthread_rwlock_unlock(&tempHead->rwlock);
@@ -100,7 +100,7 @@ void initINSclient(ServerControl*s){
     inet_aton(to,&addrTo);
     unsigned int nfrom = ntohl(addrTo.s_addr);
     unsigned int nto =  ntohl(addrFrom.s_addr);
-    for(unsigned i = nto;i < nfrom;i ++){
+    for(unsigned i = nto;i <= nfrom;i ++){
         clientInfo* cInfo = malloc(sizeof(clientInfo));
         cInfo->saddr_client.sin_addr.s_addr = htonl(i);
         DBG("生成配置IP:%s\n",inet_ntoa(cInfo->saddr_client.sin_addr));
