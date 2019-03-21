@@ -1,6 +1,6 @@
 # 设置c 语言的编译器
 CC=gcc
-CFLAGS=-g -Wall
+CFLAGS=-g -Wall -fstack-protector-all
 
 #common 需要的依赖
 CommonOBJS=common.o

@@ -7,17 +7,156 @@
 
 #include"common/common.h"
 
-char sIp[] = "192.168.2.86";
-int port = 8731;
+int heartPort ;
+int chatPort ;
+char* sIp;
+char**map;
+char pathName[] = "common/pihealth.conf";
+
+void initMapConfig(){
+    map = malloc(sizeof(char*)*10);
+    for(int i = 0;i < 6;i ++){
+                map[i] = malloc(sizeof(char)*20);
+            
+    }
+    strcpy(map[0],"CpuLog.sh");
+    strcpy(map[1],"MemLog.sh");
+    strcpy(map[2],"DiskLog.sh");
+    strcpy(map[3],"Users.sh");
+    strcpy(map[4],"ProcLog.sh");
+    strcpy(map[5],"SysInfo.sh");
+    for(int i = 0;i < 6;i ++){
+        printf("Map %d : %s\n",i,map[i]);
+    }
+}
+
 void initConfig(){
-    port = 8731;
+    char* value;
+    get_conf_value(pathName,"heartPort",&value);
+    heartPort = atoi(value);
+    get_conf_value(pathName,"chatPort",&value);
+    chatPort = atoi(value);
+    get_conf_value(pathName,"serverIp",&sIp);
+    printf("test,ServerIp:%s\n",sIp);
+    initMapConfig();
+    return ;
+}
+
+void sendFile(int sockfd,FILE* f){
+    char line[1024] = {0};
+    char eot = EOF;
+    int n;
+    while(1){
+        n = fread(line,sizeof(char),sizeof(line),f);
+        if(send(sockfd,line,strlen(line),0)<0){
+            return ;
+        }
+        if(n <= 0){
+            send(sockfd,&eot,sizeof(char),0);
+            break;
+        }
+    }
+}
+
+void* listenServer(void*arg){
+    int sockfd = make_server_socket(chatPort,10);
+    printf("Start listen port:%d\n",chatPort);
+    while(1){
+        int cfd;
+        if((cfd = accept(sockfd,NULL,NULL)) < 0){
+            perror("wrong accept");
+            close(cfd);
+            continue;
+        }
+        DBG("Server login \n");
+        for(int i = 0;i < 6;i ++){
+            fileMessage msg;
+            char commond[100] = {0};
+            // 收到服务器的信息
+            recvMessage(cfd,&msg);
+            DBG("-------------------\n");
+            printf("size:%d\nname:%s\ncontent:%s\n",msg.size,msg.name,msg.content);
+            
+            // 打开相应的log 文件
+            sprintf(commond,"log/%s.log",msg.content);
+            FILE* op = fopen(commond,"r");
+            sprintf(msg.name,"client[NO.%d]",msg.size);
+            DBG("-------------------\n");
+            if(op == NULL){
+                sprintf(msg.content,"someThings Wrong %s\n",strerror(errno));
+                sendMessage(cfd,&msg);
+                DBG("send %s\n",msg.content);
+                continue;
+            }else{
+                sprintf(msg.content,"OK");
+                DBG("send %s\n",msg.content);
+                sendMessage(cfd,&msg);
+            }
+            // 接收传输命令
+            recvMessage(cfd,&msg);
+            DBG("-------------------\n");
+            DBG("recv:\nname:%s\ncontent:%s\n",msg.name,msg.content);
+            if(strcmp(msg.content,"give me") == 0){
+                sendFile(cfd,op);
+                DBG("seccuess sendfile %s\n",commond);
+            }
+            fclose(op);
+        }
+        close(cfd);
+    }
+}
+
+
+void* work(void* arg){
+    char file[100] = {0};
+    int i = 0;
+    while(1){
+        printf("Start Work - %d\n",i++);
+        for(int i = 0;i < 6;i ++){
+            char commond[200] = {0};
+            char buff[1024] = {0};
+            sprintf(commond,"bash /tmp/script/%s",map[i]);
+            FILE *op = popen(commond,"r");
+            fread(buff,sizeof(char),sizeof(buff),op);
+            sprintf(file,"log/%s.log",map[i]);
+            FILE* fd = fopen(file,"a+");
+            fwrite(buff,sizeof(char),sizeof(buff),fd);
+            fclose(fd);
+            pclose(op);
+        }
+        sleep(3);
+    }
 }
 
 int main(){
-    initConfig;
-    write_Pi_log("test.log","port:%d,sIp %s\n",port,sIp);
-    int cfd = connect_to_ip(sIp,port);
 
+    initConfig();
+
+    printf("heartPort:%d\nchatPort:%d\nserverIp:%s\n",heartPort,chatPort,sIp);
+
+    // 连接一下Master 告诉他，我上线了。。
+    int cfd = connect_to_ip(sIp,chatPort);
+    close(cfd);
+
+    pthread_t listenServer_t,work_t;
+
+    // 接受命令的线程
+    pthread_create(&listenServer_t,NULL,listenServer,NULL);
+
+    // 干活的线程
+    pthread_create(&work_t,NULL,work,NULL);
+    
+    // 心跳监听
+    cfd = make_server_socket(heartPort,10);
+    int fd;
+    while(1){
+        fd = accept(cfd,NULL,NULL);
+        if(fd < 0){
+            perror("wrong accept");
+            continue;
+        }
+        close(fd);
+    }
     return 0;
 }
 

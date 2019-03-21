@@ -85,6 +85,32 @@ int connect_to_ip(char*IP,int port){
     return sockfd;
 }
 
+// 连接到IP非阻塞
+int connect_to_ip_no_block(char*IP,int port){
+    int sockfd;
+    if((sockfd=socket(AF_INET,SOCK_STREAM,0))==-1){
+        perror("make socket:");
+        return -1;
+    }
+
+    // 设置 socked 非阻塞
+    fcntl(sockfd,F_SETFL,O_NDELAY);
+
+    struct sockaddr_in their_add;
+    their_add.sin_family = AF_INET;
+    their_add.sin_port = htons(port);
+    their_add.sin_addr.s_addr=inet_addr(IP);
+    bzero(&(their_add.sin_zero),8);
+
+    connect(sockfd,(struct sockaddr*)&their_add,sizeof(struct sockaddr));
+
+    /* Operation now in progress */
+    if(errno != 115)return -1;
+    
+    return sockfd;
+}
+
+
 // 初始化一下
 void initSCFL(ServerControl** s,int INS){
     *s = malloc(sizeof(ServerControl));
@@ -228,3 +254,24 @@ int write_Pi_log(char* PiHealthLog,const char*format,...){
     va_end(args);fclose(fd);
     return n;
 }
+// 封装一下send 函数来发送一个Struct fileMessage
+int sendMessage(int sockfd,fileMessage*msg){
+// 将msg拷贝到char数组中然后发送
+    int len=send(sockfd,(char*)msg,sizeof(fileMessage),0);
+    if(len <= 0){
+        perror("ERRPR");
+        return -1;
+    }
+    return 0;
+
+}
+// 封装一下recv 函数来接收一个Struct fileMessage
+int recvMessage(int connetfd,fileMessage* msg){
+    int len = recv(connetfd,(char*)msg,sizeof(fileMessage),0);
+    if(len < 0){
+        perror("server recv data wrong");
+        return -1;
+    }
+    return 0;
+}
+

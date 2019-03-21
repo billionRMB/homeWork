@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <netdb.h>
+#include <sys/stat.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,6 +36,16 @@
 #else
 #define DBG(...) {}
 #endif
+
+
+
+// 传输文件的结构体
+typedef struct fileMessage{
+    int size;
+    char name[20];
+    char content[1024];
+}fileMessage;
+
 // 每个用户的信息
 typedef struct clientInfo{
     struct sockaddr_in saddr_client;
@@ -62,6 +73,8 @@ typedef struct ServerControl{
 int make_server_socket(int port,int q_size);
 // 连接到IP
 int connect_to_ip(char*ip,int port);
+// 非阻塞连接到IP
+int connect_to_ip_no_block(char*ip,int port);
 // 初始化一下
 void initSCFL(ServerControl** s,int INS);
 // 根据IP查找一个用户节点
@@ -70,9 +83,13 @@ clientInfo* findCinfo(ServerControl*s,char* IP,int*a);
 void addCinfo(qheads*s,clientInfo* node);
 // 根据IP删除一个节点
 void deleteCinfo(ServerControl*s,char* IP);
-
 // 从配置文件里获得配置信息
 int get_conf_value(char *pathname, char *key_name,char** value);
+
+// 封装一下send 函数来发送一个Struct fileMessage
+int sendMessage(int sockfd,fileMessage*msg);
+// 封装一下recv 函数来接收一个Struct fileMessage
+int recvMessage(int connetfd,fileMessage* msg);
 
 // 向PiHealthLog 文件中写入内容 返回成功print的char的个数
 // TODO 加文件锁
