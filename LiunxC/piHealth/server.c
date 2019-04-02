@@ -4,8 +4,14 @@
 	> Mail:1137554811@qq.com 
 	> Created Time: 2019年03月05日 星期二 21时04分35秒
  ************************************************************************/
- 
 #include"common/common.h"
+
+#include"common/mysqlHelp.h"
+
+#define WritePiLogInt(arg){write_Pi_log(logFile,#arg":[%d]\n",arg);}
+#define WritePiLog(...){write_Pi_log(logFile,__VA_ARGS__);}
+#define WritePiLogW(...){write_Pi_log(logFile,"\033[40;31m warning\033[0m"__VA_ARGS__);}
+
 
 typedef struct argment{
     ServerControl* scf;
@@ -13,21 +19,25 @@ typedef struct argment{
     int index;
 }argment;
 
-int getFilePort;
-int heartPort;
-int chatPort;
+int listenGetFilePort;
+int listenLoginPort;
+int chatToClientPort;
+int heartToClientPort;
 char*from;
 char*to;
 int INS;
+mysqlClr clr;
 
-char*configFile="common/pihealthd.conf";
-char*logFile="log/Master.log";
+pthread_rwlock_t myRwlock;
+
+const char*configFile="common/pihealthd.conf";
+const char*logFile="log/Master.log";
 char**map;
 
 void initMapConfig(){
-    map = malloc(sizeof(char*)*10);
+    map = (char**)malloc(sizeof(char*)*6);
     for(int i = 0;i < 6;i ++){
-        map[i] = malloc(sizeof(char)*20);
+        map[i] =(char*) malloc(sizeof(char)*15);
     }
     strcpy(map[0],"CpuLog.sh");
     strcpy(map[1],"MemLog.sh");
@@ -36,18 +46,18 @@ void initMapConfig(){
     strcpy(map[4],"ProcLog.sh");
     strcpy(map[5],"SysInfo.sh");
     for(int i = 0;i < 6;i ++){
-        printf("Map %d : %s\n",i,map[i]);
+        WritePiLog("Map %d : %s\n",i,map[i]);
     }
 }
 
 void print(ServerControl* scf){
-    printf("ServerControl->INS:%d\n",scf->INS);
+    WritePiLog("ServerControl->INS:%d\n",scf->INS);
 
     for(int i = 0;i < scf->INS;i++){
         clientInfo*p = scf -> heads[i].head;
         int no = 0;
         while(p -> next){
-            printf("%d-%d IP : [%s]\n",i,no++,inet_ntoa(p -> next ->saddr_client.sin_addr));
+            WritePiLog("%d-%d IP : [%s]\n",i,no++,inet_ntoa(p -> next ->saddr_client.sin_addr));
             p = p -> next;
         }
     }
@@ -62,74 +72,93 @@ int judgeINS(ServerControl*s){
 }
 
 void* serverAccept(void * arg){
+    pthread_rwlock_wrlock(&myRwlock);
     ServerControl*s = ((argment*)arg)->scf;
     clientInfo*cInfo = ((argment*)arg)->cInfo;
     char*ip = strdup(inet_ntoa(cInfo->saddr_client.sin_addr));
-
     int index = judgeINS(s); 
-    DBG("插入用户%s到队列%d\n",ip,index);
+    WritePiLog("插入用户%s到队列%d\n",ip,index);
     addCinfo(s->heads+index,cInfo);
+    print(s);
+    free(ip);
+    free(arg);
+    pthread_rwlock_unlock(&myRwlock);
     return NULL;
 }
 
-void* heartBeatNoBlock(void*arg){
+void* heartBeatNoBlockSelect(void*arg){
     int len = sizeof(errno);
     ServerControl* s = (ServerControl*) arg;
     clientInfo* p; qheads* tempHead;
-    // 文件描述符集合
-    fd_set fds;
-    // 超时时间设置
-    // 0.5 秒
     struct timeval tv;
-    tv.tv_sec = 1;
+    tv.tv_sec = 0;
     tv.tv_usec = 1000000 * 0.5;
-    int n = 0;
+    fd_set fds;
     while(1){
-        //DBG("----------------------------\n");
+        sleep(2);
+        pthread_rwlock_wrlock(&myRwlock);
+        // 文件描述符集合
+        FD_ZERO(&fds);
+        int maxFd = 0;
         for(int i = 0;i < s->INS;i ++){
-            DBG("NO.%d心跳-队列[%d] 线上用户[%d]人\n", n++,i,s->heads[i]. len);
             tempHead = s -> heads+i;
             p = tempHead->head;
-            pthread_rwlock_rdlock(&tempHead->rwlock);
-            // 注意这个坑
             while(p&&p->next){
                 char*ip = strdup(inet_ntoa(p->next->saddr_client.sin_addr));
-                int sfd = connect_to_ip_no_block(ip,heartPort);
+                int sfd = connect_to_ip_no_block(ip,heartToClientPort);
+                WritePiLogW("%s:%d\n",ip,sfd);
                 if(sfd == -1){
-                    perror("ssssss - connect to ip no block:");
+                    WritePiLogW("connect to ip no block: %s\n",strerror(errno));
                     p = p -> next;
+                    close(sfd);
                     continue;
                 }
-                FD_ZERO(&fds);
+                p -> next -> sId = sfd;
+                p = p -> next;
+                maxFd = maxFd > sfd ? maxFd:sfd;
                 FD_SET(sfd,&fds);
-                int retval = select(sfd+1,&fds,&fds,NULL,&tv);
-                if(retval == -1){
-                    perror("select(): ");
-                }else if(retval == 0){
-                    DBG("%s:连接超时\n",ip);
-                    p = p -> next;
-                }else {
-                    getsockopt(sfd,SOL_SOCKET,SO_ERROR,&errno,(socklen_t*)&len);
-                    if(errno != 0){
-                        pthread_rwlock_unlock(&tempHead->rwlock);
-                        pthread_rwlock_wrlock(&tempHead->rwlock);
+                free(ip);
+            } 
+        }
+        sleep(1);
+        int ret = select(maxFd+1,&fds,NULL,NULL,&tv);
+        WritePiLog("开始select\n");
+        WritePiLog("ret = %d\n",ret);
+        if(ret != 0)
+        {
+            for(int i = 0;i < INS;i ++){
+                tempHead = s -> heads+i;
+                p = tempHead->head;
+                while(p -> next){
+                    int sfd = p -> next -> sId;
+                    char*ip = strdup(inet_ntoa(p->next->saddr_client.sin_addr));
+                    if(FD_ISSET(sfd,&fds)){
+                        getsockopt(sfd,SOL_SOCKET,SO_ERROR,&errno,(socklen_t*)&len);
+                        if(errno != 0){
+                            WritePiLog("Error : %s\n",strerror(errno));
+                            clientInfo*q = p -> next;
+                            p->next = p -> next -> next;
+                            tempHead -> len --;
+                            free(q);
+                            WritePiLog("删除节点%s:%d\n",ip,sfd);
+                        }else{
+                            WritePiLog("节点%s 还存在\n",ip);
+                            p = p -> next;
+                        }
+                    }else{
+                        WritePiLog("Error : 超时\n");
+                        WritePiLog("删除节点%s:%d\n",ip,sfd);
                         clientInfo*q = p -> next;
                         p->next = p -> next -> next;
                         tempHead -> len --;
                         free(q);
-             //           DBG("删除节点%s\n",ip);
-                        pthread_rwlock_unlock(&tempHead->rwlock);
-                        pthread_rwlock_rdlock(&tempHead->rwlock);
-                    }else{
-              //          DBG("节点%s 还存在\n",ip);
-                        p = p -> next;
                     }
+                    close(sfd);
+                    free(ip);
                 }
-                close(sfd);
-            } 
-            pthread_rwlock_unlock(&tempHead->rwlock);
+            }
         }
-        sleep(1);
+    pthread_rwlock_unlock(&myRwlock);
     }
 }
 
@@ -142,9 +171,9 @@ void initINSclient(ServerControl*s){
     unsigned int nfrom = ntohl(addrTo.s_addr);
     unsigned int nto =  ntohl(addrFrom.s_addr);
     for(unsigned i = nto;i <= nfrom;i ++){
-        clientInfo* cInfo = malloc(sizeof(clientInfo));
+        clientInfo* cInfo =(clientInfo*) malloc(sizeof(clientInfo));
         cInfo->saddr_client.sin_addr.s_addr = htonl(i);
-        DBG("生成配置IP:%s\n",inet_ntoa(cInfo->saddr_client.sin_addr));
+        WritePiLog("生成配置IP:%s\n",inet_ntoa(cInfo->saddr_client.sin_addr));
         cInfo->next = NULL;
         addCinfo(s->heads+i%INS,cInfo);
         char filePath[20] = {0};
@@ -155,12 +184,14 @@ void initINSclient(ServerControl*s){
 
 void initConfig(ServerControl*s){
     char*value;
-    get_conf_value(configFile,"heartPort",&value);
-    heartPort = atol(value);
-    get_conf_value(configFile,"getFilePort",&value);
-    getFilePort = atol(value);
-    get_conf_value(configFile,"chatPort",&value);
-    chatPort = atol(value);
+    get_conf_value(configFile,"listenGetFilePort",&value);
+    listenGetFilePort = atol(value);
+    get_conf_value(configFile,"listenLoginPort",&value);
+    listenLoginPort = atol(value);
+    get_conf_value(configFile,"chatToClientPort",&value);
+    chatToClientPort = atol(value);
+    get_conf_value(configFile,"heartToClientPort",&value);
+    heartToClientPort = atol(value);
     get_conf_value(configFile,"INS",&value);
     INS = atol(value);
     free(value);
@@ -168,7 +199,8 @@ void initConfig(ServerControl*s){
     get_conf_value(configFile,"to",&to);
 }
 
-// 从socket里接受数据存到FILE* 里
+// 从socket里接受数
+// 存到FILE* 里
 void saveToFile(int sd,FILE*f){
     char c;
     int n = 0;
@@ -183,8 +215,8 @@ void saveToFile(int sd,FILE*f){
 
 void chatToclient(char* ip){
     int fd;
-    if((fd = connect_to_ip(ip,chatPort))<0){
-        printf("Wrong connect %s:%d\n",ip,chatPort);
+    if((fd = connect_to_ip(ip,chatToClientPort))<0){
+        WritePiLogW("Wrong connect %s:%d\n",ip,chatToClientPort);
         return ;
     }
     for(int i = 0;i < 6;i ++){
@@ -194,15 +226,14 @@ void chatToclient(char* ip){
         sprintf(message.name,"Master");
         sprintf(message.content,"%s",map[i]);
         sendMessage(fd,&message);
-        printf("发送信息ok\n");
+        WritePiLog("发送信息ok\n");
         // 接收信息
         recvMessage(fd,&message);
-        // printf("recv:\nname:%s\ncontent[%lu]:%s\n",message.name,strlen(message.content),message.content);
         // 如果收到了OK就回一个ok然后等待接受文件
         if(strcmp(message.content,"OK") == 0){
             char filePath[100] = {0};
             sprintf(filePath,"file/%s/%s.log",ip,map[i]);
-            printf("Start write to file %s\n",filePath);
+            WritePiLog("Start write to file %s\n",filePath);
 
             FILE*f =  fopen(filePath,"a+");
             sprintf(message.name,"Master");
@@ -211,11 +242,11 @@ void chatToclient(char* ip){
             saveToFile(fd,f);
             fclose(f);
 
-            DBG("ok saveToFile %s\n",filePath);
+            WritePiLog("ok saveToFile %s\n",filePath);
         }else{
             // 记录一下
-            write_Pi_log(logFile,"%s say:%s\n",message.name,message.content);
-            DBG("somethings Wrong\n");
+            WritePiLogW("%s say:%s\n",message.name,message.content);
+            WritePiLogW("somethings Wrong\n");
         }
     }
     close(fd);
@@ -225,19 +256,20 @@ void chatToclient(char* ip){
 void* work(void* arg_){
     argment* arg = (argment*) arg_;
     while(1){
-        sleep(30);
+        sleep(300);
         qheads*head = &arg -> scf -> heads[arg->index]; 
         clientInfo* p = arg ->scf -> heads[arg->index].head;
-        pthread_rwlock_rdlock(&head->rwlock);
         while(p -> next){
             char* ip = strdup(inet_ntoa(p -> next -> saddr_client.sin_addr));
-            DBG("----------------------------------------------------\n");
-            printf("** start to chat to %s ** \n",ip);
+            WritePiLog("----------------------------------------------------\n");
+            WritePiLog("** start to chat to %s ** \n",ip);
             chatToclient(ip);
-            DBG("** end chat to %s ** \n",ip);
+            WritePiLog("** end chat to %s ** \n",ip);
+            pthread_rwlock_rdlock(&head->rwlock);
             p = p -> next;
+            pthread_rwlock_unlock(&head->rwlock);
+            free(ip);
         }
-        pthread_rwlock_unlock(&head->rwlock);
     }
 }
 
@@ -245,7 +277,7 @@ void* listenWarnigInfo(void*arg){
 
     int sid = socket(AF_INET,SOCK_DGRAM,0);
     if(sid < 0){
-        perror("wrong create socket");
+        WritePiLogW("wrong create socket %s\n",strerror(errno));
         return NULL;
     }
 
@@ -258,22 +290,26 @@ void* listenWarnigInfo(void*arg){
     int yes = 1;
     if(setsockopt(sid,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof(int)) < 0){
         close(sid);
-        perror("setsockopt ");
+        WritePiLog("setsockopt %s\n",strerror(errno));
         return NULL;
     }
 
     if(bind(sid,(struct sockaddr*)&addr,sizeof(addr)) < 0){
         close(sid);
-        perror("bind");
+        WritePiLog("bind %s\n",strerror(errno));
         return NULL;
     }
 
     while(1){
-        printf("start listenWarnigInfo_t \n");
-        char recv[10] = {0};
+        WritePiLog("start listenWarnigInfo_t \n");
+        char recv[100] = {0};
         socklen_t len = sizeof(addr);
-        recvfrom(sid,recv,10,0,(struct sockaddr*)&addr,&len);
-        printf("\033[47;31mWaring\033[0m:%s\n",recv);
+        recvfrom(sid,recv,sizeof(recv),0,(struct sockaddr*)&addr,&len);
+        WritePiLog("\033[47;31mWaring\033[0m:%s\n",recv);
+        char* wip = strdup(inet_ntoa(addr.sin_addr));
+        char wtype[] = "1";
+        char* wdetails = recv;
+        inserDataNew(clr,"warning_events",wip,wtype,wdetails);
     }
 
     close(sid);
@@ -281,31 +317,72 @@ void* listenWarnigInfo(void*arg){
     return NULL;
 }
 
+
+void initMysqlClr(){
+    asprintf(&clr.server,"localhost");
+    asprintf(&clr.user,"root");
+    asprintf(&clr.passwd,"536842");
+    asprintf(&clr.db,"piHealth");
+    clr.port = 3306;
+
+    if(!connectDatabase(&clr)){
+        WritePiLogW("connect Database wrong %s\n",strerror(errno));
+        exit(-1);
+    }
+}
+
+
+int doLogin(int sd,socklen_t len,ServerControl*s){
+    int cfd = -1;
+    pthread_t pt;
+    argment*arg = (argment*)malloc(sizeof(argment));
+    clientInfo* cInfo = (clientInfo*)malloc(sizeof(clientInfo));
+    if((cfd = accept(sd,(struct sockaddr*)&cInfo->saddr_client,&len)) == -1){
+    WritePiLogW("accept wrong %s\n",strerror(errno));
+    free(cInfo);
+    close(cfd);
+    return -1;
+    }
+    char*ip = strdup(inet_ntoa(cInfo->saddr_client.sin_addr));
+    WritePiLog("%s 登录\n",ip);
+    if(findCinfo(s,ip,NULL)){
+    WritePiLog("IP:%s 用户已经登录\n",ip);
+    free(ip);
+    return -1;
+    }
+    arg->scf = s;
+    arg->cInfo = cInfo;
+    // 加入节点
+    pthread_create(&pt,NULL,serverAccept,(void*)arg);
+    return cfd;
+}
+
+char hello[] = "master:啊啊啊";
+
 int main(){
-    initMapConfig();
-
     ServerControl *s;
+    //pthread_rwlock_init(&myRwlock,NULL);
 
+    initMapConfig();
     initConfig(NULL);
-    printf("getFilePort:%d\nchatPort:%d\nheartPort:%d\nINS:%d\nfrom:%s\nto:%s\n",getFilePort,chatPort,heartPort,INS,from,to);
-
     initSCFL(&s,INS);
     initINSclient(s);
+    initMysqlClr();
 
-    print(s);
-
-    int sd = make_server_socket(chatPort,10);
-    socklen_t len = sizeof(struct sockaddr_in);
+    WritePiLogInt(listenGetFilePort);
+    WritePiLogInt(listenLoginPort);
+    WritePiLogInt(chatToClientPort);
+    WritePiLogInt(heartToClientPort);
 
     pthread_t heartBeatP;
     // 心跳的线程
-    pthread_create(&heartBeatP,NULL,heartBeatNoBlock,(void*)s);
+    pthread_create(&heartBeatP,NULL,heartBeatNoBlockSelect,(void*)s);
     
     // 开始工作
-    pthread_t* workIns = calloc(INS,sizeof(pthread_t));
+    pthread_t* workIns = (pthread_t*)calloc(INS,sizeof(pthread_t));
 
     for(int i = 0;i < INS;i ++){
-        argment*arg = malloc(sizeof(argment));
+        argment*arg = (argment*)malloc(sizeof(argment));
         arg->scf = s;
         arg->index = i; 
         pthread_create(&workIns[i],NULL,work,(void*)arg);
@@ -316,31 +393,63 @@ int main(){
     pthread_t listenWarnigInfo_t;
     pthread_create(&listenWarnigInfo_t,NULL,listenWarnigInfo,(void*)&lsWport);
 
-    while(1){
-        int cfd;
-        pthread_t pt;
-        argment*arg = malloc(sizeof(argment));
-        clientInfo* cInfo = malloc(sizeof(clientInfo));
-        if((cfd = accept(sd,(struct sockaddr*)&cInfo->saddr_client,&len) == -1)){
-            perror("accept wrong ");
-            free(cInfo);
-            close(cfd);
-            continue;
-        }
-        char*ip = strdup(inet_ntoa(cInfo->saddr_client.sin_addr));
-        
-        DBG("IP:%s 用户登录\n",ip);
-        
-        if(findCinfo(s,ip,NULL)){
-            DBG("IP:%s 用户已经登录\n",ip);
-            continue;
-        }
-        arg->scf = s;
-        arg->cInfo = cInfo;
-        // 加入节点
-        pthread_create(&pt,NULL,serverAccept,(void*)arg);
-        close(cfd);
-    }
+    int sd = make_server_socket(listenLoginPort,10);
+    socklen_t len = sizeof(struct sockaddr_in);
     
+    // 初始化epoll
+    int epfd = epoll_create(100);
+    int nfds;
+
+    struct epoll_event ev,events[100];
+    ev.events = EPOLLIN;
+    ev.data.fd = sd;
+
+    if (epoll_ctl(epfd, EPOLL_CTL_ADD, sd, &ev) == -1) {
+        perror("epoll_ctl: listen_sock");
+        exit(EXIT_FAILURE);
+    }
+
+    while(1){
+        nfds = epoll_wait(epfd,events,100,-1);
+        if(nfds == -1){
+            perror("epoll_wailt");
+            exit(EXIT_FAILURE);
+        }
+        for(int i = 0;i < nfds;i ++){
+            int fd;
+            fd = events[i].data.fd; 
+            if(fd == sd){
+                int newfd = doLogin(sd,len,s);
+                if(newfd != -1){
+                    struct epoll_event * ev = malloc(sizeof(struct epoll_event));
+                    ev->events = EPOLLIN;
+                    ev->data.fd = newfd;
+                    if (epoll_ctl(epfd, EPOLL_CTL_ADD, newfd,
+                                ev) == -1) {
+                        perror("epoll_ctl: add");
+                        exit(EXIT_FAILURE);
+                    }
+                    free(ev);
+                }
+            }else if (events[i].events & EPOLLIN) {
+                char buf[BUFSIZ] = {0};
+                read(events[i].data.fd, buf, BUFSIZ-1);
+                events[i].data.fd = fd;
+                events[i].events  =  EPOLLOUT;
+                if (epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &events[i]) == -1) {
+                    perror("epoll_ctl: mod");
+                }
+                printf("%s\n",buf);
+            }else if(events[i].events & EPOLLOUT){
+                int fd = events[i].data.fd;
+                send(fd,hello,sizeof(hello),0); 
+                epoll_ctl(epfd,EPOLL_CTL_DEL,fd,&events[i]);
+            }
+        }
+    }
+
+    close(sd);
+    freeMysqlClr(&clr);
+
     return 0;
 }

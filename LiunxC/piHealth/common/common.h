@@ -7,6 +7,7 @@
 
 #ifndef _COMMON_H
 #define _COMMON_H
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <arpa/inet.h>
 #include <pthread.h>
@@ -25,10 +26,12 @@
 #include <signal.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/epoll.h>
 #include <unistd.h>
 #include <time.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
 #include <stdarg.h>
-
 #define DEBUG
 
 #if defined DEBUG
@@ -49,6 +52,7 @@ typedef struct fileMessage{
 // 每个用户的信息
 typedef struct clientInfo{
     struct sockaddr_in saddr_client;
+    int sId;
     int clength;
     char name[20];
     struct clientInfo* next;
@@ -84,7 +88,7 @@ void addCinfo(qheads*s,clientInfo* node);
 // 根据IP删除一个节点
 void deleteCinfo(ServerControl*s,char* IP);
 // 从配置文件里获得配置信息
-int get_conf_value(char *pathname, char *key_name,char** value);
+int get_conf_value(const char *pathname,const char *key_name,char**);
 
 // 封装一下send 函数来发送一个Struct fileMessage
 int sendMessage(int sockfd,fileMessage*msg);
@@ -93,6 +97,6 @@ int recvMessage(int connetfd,fileMessage* msg);
 
 // 向PiHealthLog 文件中写入内容 返回成功print的char的个数
 // TODO 加文件锁
-int write_Pi_log(char *PiHealthLog,const char*format,...);
+int write_Pi_log(const char *PiHealthLog,const char*format,...);
 
 #endif

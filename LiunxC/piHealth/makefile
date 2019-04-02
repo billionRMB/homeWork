@@ -7,25 +7,19 @@ CommonOBJS=common.o
 
 .PHONY:clean
 
+mysqlHelp.o:common/mysqlHelp.c
+	$(CC) $(CFLAGS) -c common/mysqlHelp.c -lmysqlclient
 
-client.o:client.c
-	$(CC) $(CFLAGS) -c client.c -lpthread
-
-# 创建client
-client: $(CommonOBJS) client.o
-	$(CC) $(CFLAGS) -o client $(CommonOBJS) client.o -lpthread
+common.o: common/common.c
+	$(CC) $(CFLAGS) -c common/common.c -lpthread 
 
 server.o:server.c
-	$(CC) $(CFLAGS) -c server.c -lpthread
-
+	$(CC) $(CFLAGS) -c server.c -l pthread
 
 # 创建server
-server: $(CommonOBJS) server.o
-	$(CC) $(CFLAGS) -o server $(CommonOBJS) server.o -lpthread
+server: common.o server.o mysqlHelp.o
+	$(CC) $(CFLAGS) -o server mysqlHelp.o common.o server.o -lpthread -lmysqlclient
 
-
-$(CommonOBJS): common/common.c
-	$(CC) $(CFLAGS) -c common/common.c -lpthread
 
 clean:
 	rm *.o
